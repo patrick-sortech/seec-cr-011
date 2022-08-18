@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="connxjdbc">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/../repositorio-libs/connxjdbc.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
