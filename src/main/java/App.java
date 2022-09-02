@@ -1,26 +1,23 @@
 import br.com.sortech.utils.configurations.database.ConnectionManager;
 import com.softwareag.entirex.aci.*;
-import oracle.jdbc.OraclePreparedStatement;
 
-import javax.xml.transform.Result;
-import java.io.IOException;
 import java.sql.*;
-import java.text.SimpleDateFormat;
-import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 public class App {
 
-    public static int BATCH_SIZE = 5000;
-    public static int ROWS_LIMIT = 155000;
+    public static int BATCH_SIZE = 50;
+    public static int ROWS_LIMIT = 150;
+    public static int ROWS_OFFSET = 50;
 
-    public static int ROWS_OFFSET = 10000;
+    // ***** NÃO ENVIAR A MESMA CHAVE DUAS VEZES, VAI DAR ERRO **** //
+    public static String CHAVE_DEBITOS;
 
 
     public static void main(String[] args) throws Exception {
-        Connection connOracle = null;
-        Connection connAdabas = null;
+        Connection connOracle;
+        Connection connAdabas;
 
         connOracle = getConexaoOracle();
         connOracle.setAutoCommit(false);
@@ -28,44 +25,42 @@ public class App {
         connAdabas = getConexaoAdabas();
         connAdabas.setAutoCommit(false);
 
-        com.softwareag.entirex.aci.Broker broker = null;
-        AtualizarDebitos a = null;
+        Broker broker;
+        AtualizarDebitos a;
 
-        String chaveDebitos = "20220818LOTE0001";
+        CHAVE_DEBITOS = getChaveExecucao(connOracle);
+        System.out.println("CHAVE GERADA ==> " + CHAVE_DEBITOS);
+        connOracle.commit();
 
-        broker = new com.softwareag.entirex.aci.Broker("10.69.1.14:1971", "RPC/MAQH171X/CALLNAT");
+
+        broker = new Broker("10.69.1.14:1971", "RPC/MAQH171X/CALLNAT");
         a = new AtualizarDebitos(broker,"RPC/MAQH171X/CALLNAT");
-//        a.setRPCUserId("03249595");
-//        a.setRPCPassword("nova01");
-//        a.setRPCUserId("_UsuAdmGwhomolog");
-//        a.setRPCPassword("#GW_homolog$1");
-//        a.setNaturalLogon(true);
 
         broker.logon();
-        a.setReliable(1); // Seguramente deixou a chamada assíncrona
-
+        // Este comando deixará a chamada ao EntireX assíncrona
+        a.setReliable(1);
 
         try{
             ResultSet rsOracle = getDebitosOracle(connOracle);
-            carregaDebitosAdabas(connAdabas, rsOracle, chaveDebitos);
+            carregaDebitosAdabas(connAdabas, rsOracle, CHAVE_DEBITOS);
 //
             System.out.println("* ------ CHAMADA ENTIREX AO N40017OX ------*");
 
-            a.n40017ox("", chaveDebitos);
+            a.n40017ox("", CHAVE_DEBITOS);
             System.out.println("* ------ VERIFICANDO TERMINO EXECUCAO ------*");
             long startTime = System.nanoTime();
-            boolean finalizado = false;
+            boolean finalizado;
             do {
                 TimeUnit.SECONDS.sleep(10);
-                finalizado = verificaTerminoExecucao(connAdabas, chaveDebitos);
+                finalizado = verificaTerminoExecucao(connAdabas, CHAVE_DEBITOS);
 
-            }while(finalizado != true);
+            }while(!finalizado);
             long endTime = System.nanoTime();
             long totalTime =  TimeUnit.SECONDS.convert((endTime - startTime), TimeUnit.NANOSECONDS);
             System.out.println("Tempo de Execução: " + totalTime + " segundos");
-            System.out.println("");
+            System.out.println();
 
-            ResultSet rsAdabas = getDebitosCorrigidosAdabas(connAdabas, chaveDebitos);
+            ResultSet rsAdabas = getDebitosCorrigidosAdabas(connAdabas, CHAVE_DEBITOS);
             atualizaDebitosOracle(connOracle, rsAdabas);
         }catch(SQLException e){
             connOracle.rollback();
@@ -92,6 +87,14 @@ public class App {
 
     }
 
+    static public String getChaveExecucao(Connection connection) throws  SQLException {
+        String sql = "SELECT to_char(sysdate,'YYYYMMDD')||'LOTE'||lpad(SEQ_LOTE_ATUALIZACAO_DIVIDA.nextval,10,0) AS CHAVE from dual";
+        Statement st = connection.createStatement();
+        ResultSet rs = st.executeQuery(sql);
+        rs.next();
+        return rs.getString("CHAVE");
+
+    }
     static public ResultSet getDebitosOracle(Connection connection) throws SQLException {
         System.out.println("* ------ DEBITOS RECUPERADOS DO ORACLE ------*");
         ResultSet rs = null;
@@ -113,6 +116,8 @@ public class App {
                 "AND CO_TRIBUTO_EXT = 1\n" +
                 "OFFSET " + ROWS_OFFSET + " ROWS\n" +
                 "";
+
+       // and (DT_ULT_ATU_DIVIDA is null or (DT_ULT_ATU_DIVIDA is not null and trunc(DT_ULT_ATU_DIVIDA) < trunc(sysdate,'MM')))
         try {
             long startTime = System.nanoTime();
 
@@ -123,12 +128,10 @@ public class App {
             long endTime = System.nanoTime();
             long totalTime =  TimeUnit.SECONDS.convert((endTime - startTime), TimeUnit.NANOSECONDS);
             System.out.println("Tempo de Execução: " + totalTime + " segundos");
-            System.out.println("");
+            System.out.println();
 
 
         } catch (SQLException ex) {
-//            connection.rollback();
-//            connection.close();
             ex.printStackTrace();
         }
         return rs;
@@ -141,7 +144,7 @@ public class App {
             for (int i = 1; i <= colsCount; i++) {
                 System.out.print(rsmd.getColumnName(i) + ": " + rs.getString(i) + " ");
             }
-            System.out.println("");
+            System.out.println();
         }
     }
 
@@ -191,19 +194,11 @@ public class App {
             long endTime = System.nanoTime();
             long totalTime =  TimeUnit.SECONDS.convert((endTime - startTime), TimeUnit.NANOSECONDS);
             System.out.println("Tempo de Execução: " + totalTime + " segundos");
-            System.out.println("");
+            System.out.println();
 
         } catch (SQLException ex) {
-//            connection.rollback();
-//            connection.close();
             ex.printStackTrace();
         }
-//        } finally {
-//            if (connection != null) {
-//                connection.close();
-//                // connection = null;
-//            }
-//        }
 
         return result;
     }
@@ -217,7 +212,6 @@ public class App {
 
         int countLote = 0;
         int countTotal = 0;
-        int[] qtdBatch;
 
         String sqlInsert = "INSERT INTO SITAF_DEBITOS_CORRECAO ( IT_NU_TERMINAL, IT_CO_USUARIO," +
                 "IT_IDEN_DEBITO,IT_IN_TIPO_DEBITO,IT_NU_RECEITA,IT_NU_ANO_REF_DEBITO,IT_CHAVE_PESQUISA, " +
@@ -265,39 +259,26 @@ public class App {
                 countTotal++;
 
                 if(countLote >= BATCH_SIZE){
-                    qtdBatch = ps.executeBatch();
+                    ps.executeBatch();
                     ps.clearBatch();
-//                    System.out.println("Executa Batch ..: " + Arrays.toString(qtdBatch));
                     connection.commit();
                     countLote = 0;
                 }
             }
             System.out.println("TOTAL DE DEBITOS CARREGADOS ADABAS => " + countTotal);
-            qtdBatch = ps.executeBatch();
-//            System.out.println("Último Executa Batch ..: " + Arrays.toString(qtdBatch));
+            ps.executeBatch();
             connection.commit();
 
             long endTime = System.nanoTime();
             long totalTime =  TimeUnit.SECONDS.convert((endTime - startTime), TimeUnit.NANOSECONDS);
             System.out.println("Tempo de Execução: " + totalTime + " segundos");
-            System.out.println("");
+            System.out.println();
 
         } catch (Exception ex) {
             System.out.println("ERRO TOTAL DE DEBITOS CARREGADOS ADABAS => " + countTotal);
-
-//            connection.rollback();
-//            connection.close();
             ex.printStackTrace();
         }
-//        } finally {
-//            System.out.println("Finally => " + connection);
-//            if (connection != null) {
-//                connection.commit();
-//                //connection.close();
-//                //connection = null;
-//            }
-//
-//        }
+
 
     }
 
@@ -318,6 +299,7 @@ public class App {
                 "VL_ATU_OUTROS = ?,\n" +
                 "VL_DIVIDA_ATUAL = ?,\n" +
                 "DT_ULT_ATU_DIVIDA = TO_DATE(?,'YYYYMMDD')\n" +
+                "VL_ATU_LANCAMENTO = ?,\n" +
                 "WHERE\n" +
                 "EXT_BILL_ID = ?\n";
 
@@ -328,13 +310,16 @@ public class App {
             while (rsDebitosAdabas.next()) {
 
                     //printRow(rsDebitosAdabas);
+                    // adicionar o modifiedDate = sysdate
                     ps.setDouble(1, rsDebitosAdabas.getDouble("IT_VA_PRINCIPAL"));
                     ps.setDouble(2, rsDebitosAdabas.getDouble("IT_VA_MULTA"));
                     ps.setDouble(3, rsDebitosAdabas.getDouble("IT_VA_JUROS"));
                     ps.setDouble(4, rsDebitosAdabas.getDouble("IT_VA_OUTROS"));
                     ps.setDouble(5, rsDebitosAdabas.getDouble("IT_VA_TOTAL"));
                     ps.setString(6, rsDebitosAdabas.getString("IT_DA_CORRECAO"));
-                    ps.setString(7, rsDebitosAdabas.getString("IT_CHAVE_ORIGEM_DEBITO").trim());
+                    ps.setString(7, rsDebitosAdabas.getString("IT_VA_TOTAL"));
+
+                ps.setString(8, rsDebitosAdabas.getString("IT_CHAVE_ORIGEM_DEBITO").trim());
 
                     ps.addBatch();
                     countLote++;
@@ -349,31 +334,20 @@ public class App {
                 }
 
             System.out.println("TOTAL ATUALIZADOS ORACLE => " + countTotal);
-            int[] qtdBatch = ps.executeBatch();
-            //System.out.println("Último Executa Batch ..: " + Arrays.toString(qtdBatch));
+            ps.executeBatch();
             connection.commit();
 
             long endTime = System.nanoTime();
             long totalTime =  TimeUnit.SECONDS.convert((endTime - startTime), TimeUnit.NANOSECONDS);
             System.out.println("Tempo de Execução: " + totalTime + " segundos");
-            System.out.println("");
+            System.out.println();
         } catch (SQLException ex) {
             System.out.println("ERRO TOTAL LIDOS PARA UPDATE => " + countTotal);
-//            connection.rollback();
-//            connection.close();
+
             ex.printStackTrace();
         }catch (Exception e){
             e.printStackTrace();
         }
-//        } finally {
-//            System.out.println("Finally => " + connection);
-//            if (connection != null) {
-//                connection.commit();
-//                connection.close();
-//                //connection = null;
-//            }
-//
-//        }
     }
 
     public static boolean verificaTerminoExecucao(Connection connection, String chaveDebito){
@@ -387,23 +361,13 @@ public class App {
             if(rs != null){
                 String res = rs.getString("IT_IN_SITUACAO_PROCESSAMENTO");
                 System.out.println("IT_IN_SITUACAO_PROCESSAMENTO = " + res);
-                execucaoFinalizada = (res.equals("S")) ? true : false;
+                execucaoFinalizada = res.equals("S") ? true : false;
             }
         }catch (Exception e ){
             e.printStackTrace();
             execucaoFinalizada = false;
         }
         return execucaoFinalizada;
-    }
-
-    public static void setTimeoutSync(Runnable runnable, int delay) {
-        try {
-            Thread.sleep(delay);
-            runnable.run();
-        }
-        catch (Exception e){
-            System.err.println(e);
-        }
     }
 
 }
