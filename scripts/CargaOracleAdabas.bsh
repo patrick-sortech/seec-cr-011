@@ -15,82 +15,8 @@ import java.util.Calendar;
 
 
 public static int BATCH_SIZE = 50;
-public static int ROWS_LIMIT = 100;
-public static int ROWS_OFFSET = 3200;
-
-public static class Debito{
-	private String idenDebito;
-	private int nuReceita;
-	private int anoRefDebito;
-	private String chaveExtDebito;
-	private String chaveBillId;
-	private String nuCotaDebito;
-	private String tipoDebito;
-	private String chaveLote;
-
-	public String getIdenDebito() {
-		return idenDebito;
-	}
-
-	public void setIdenDebito(String idenDebito) {
-		this.idenDebito = idenDebito;
-	}
-	public int getNuReceita() {
-		return nuReceita;
-	}
-
-	public void setNuReceita(int nuReceita) {
-		this.nuReceita = nuReceita;
-	}
-
-	public int getAnoRefDebito() {
-		return anoRefDebito;
-	}
-
-	public void setAnoRefDebito(int anoRefDebito) {
-		this.anoRefDebito = anoRefDebito;
-	}
-
-	public String getChaveExtDebito() {
-		return chaveExtDebito;
-	}
-
-	public void setChaveExtDebito(String chaveExtDebito) {
-		this.chaveExtDebito = chaveExtDebito;
-	}
-
-	public String getChaveBillId() {
-		return chaveBillId;
-	}
-
-	public void setChaveBillId(String chaveBillId) {
-		this.chaveBillId = chaveBillId;
-	}
-
-	public String getNuCotaDebito() {
-		return nuCotaDebito;
-	}
-
-	public void setNuCotaDebito(String nuCotaDebito) {
-		this.nuCotaDebito = nuCotaDebito;
-	}
-
-	public String getTipoDebito() {
-		return tipoDebito;
-	}
-
-	public void setTipoDebito(String tipoDebito) {
-		this.tipoDebito = tipoDebito;
-	}
-
-	public String getChaveLote() {
-		return chaveLote;
-	}
-
-	public void setChaveLote(String chaveLote) {
-		this.chaveLote = chaveLote;
-	}
-}
+public static int ROWS_LIMIT = 110;
+public static int ROWS_OFFSET = 0;
 
 static public Connection getConexaoOracle() throws Exception {
 	Connection conn = null;
@@ -127,10 +53,10 @@ static public Connection getConexaoAdabas() throws Exception {
 	return DriverManager.getConnection(url, user, password);
 }
 
-static public String geraChaveLote() {
+static public String geraChaveLote(String filtro) {
 	Date date = Calendar.getInstance().getTime();
 	DateFormat dateFormat = new SimpleDateFormat("yyyyMMddHHmmssS");
-	return dateFormat.format(date);
+	return filtro + dateFormat.format(date);
 }
 
 static public boolean insereNovoEvento(Connection conn, int idEvento, String chaveLote) throws java.sql.SQLException{
@@ -187,59 +113,9 @@ static public int getEventoNextSequence(Connection conn) throws java.sql.SQLExce
 
 }
 
-static public void gravaDebitosAdabas(
-            Connection connection,
-            List<Debito> listaDebitos
-    ) throws SQLException {
-        System.out.println("* ------ CARREGAR DEBITOS NO ADABAS ------*");
-
-
-        String sqlInsert = "INSERT INTO SITAF_DEBITOS_CORRECAO ( IT_NU_TERMINAL, IT_CO_USUARIO," +
-                "IT_IDEN_DEBITO,IT_IN_TIPO_DEBITO,IT_NU_RECEITA,IT_NU_ANO_REF_DEBITO,IT_CHAVE_PESQUISA, " +
-                "IT_NU_COTA_DEBITO, IT_CHAVE_ORIGEM_DEBITO) VALUES (?,?,?,?,?,?,?,?,?)";
-        try {
-
-            long startTime = System.nanoTime();
-
-            PreparedStatement ps = connection.prepareStatement(sqlInsert);
-
-            for(Debito debito : listaDebitos){
-                ps.setString(1, "SICOB");
-                ps.setString(2, "INTERNET");
-                ps.setString(3, debito.getIdenDebito());
-                ps.setString(4, debito.getTipoDebito());
-                ps.setInt(5,debito.getNuReceita());
-                ps.setInt(6,debito.getAnoRefDebito());
-                ps.setString(7, debito.getChaveLote());
-                ps.setString(8, debito.getNuCotaDebito());
-                ps.setString(9, debito.getChaveExtDebito());
-                ps.addBatch();
-
-            }
-
-            ps.executeBatch();
-            ps.clearBatch();
-            connection.commit();
-
-            long endTime = System.nanoTime();
-            long totalTime =  TimeUnit.SECONDS.convert((endTime - startTime), TimeUnit.NANOSECONDS);
-            System.out.println("Tempo de Execução: " + totalTime + " segundos");
-            System.out.println();
-
-        } catch (Exception ex) {
-            System.out.println("ERRO DEBITOS CARREGADOS ADABAS");
-            connection.rollback();
-
-            ex.printStackTrace();
-        }
-
-    }
-
 static public void loadDebitosFromOracleToAdabas(Connection connOracle, Connection connAdabas, String filtroConsulta) throws java.sql.SQLException {
-	//System.out.println("* ------ RECUPERANDO DEBITOS NO ORACLE ------*");
 	ResultSet rs = null;
-	Debito debito;
-	List<Debito> listaDebitos = new ArrayList<Debito>();
+
 	int qtdDados = 0;
 
 	String sqlGetDebitos = "SELECT \n" +
@@ -262,30 +138,24 @@ static public void loadDebitosFromOracleToAdabas(Connection connOracle, Connecti
 			"AND SUBSTR(NU_DEVEDOR_RESPONSAVEL,-1,1) = " + filtroConsulta +
 			"";
 
-	try {
-		long startTime = System.nanoTime();
-
-		PreparedStatement ps = connOracle.prepareStatement(sqlGetDebitos);
-		ps.setMaxRows(ROWS_LIMIT);
-		rs = ps.executeQuery();
-
-		long endTime = System.nanoTime();
-		long totalTime =  TimeUnit.SECONDS.convert((endTime - startTime), TimeUnit.NANOSECONDS);
-		//System.out.println("Tempo de Execução: " + totalTime + " segundos");
-		//System.out.println();
+	String sqlInsertAdabas = "INSERT INTO SITAF_DEBITOS_CORRECAO ( IT_NU_TERMINAL, IT_CO_USUARIO," +
+		"IT_IDEN_DEBITO,IT_IN_TIPO_DEBITO,IT_NU_RECEITA,IT_NU_ANO_REF_DEBITO,IT_CHAVE_PESQUISA, " +
+		"IT_NU_COTA_DEBITO, IT_CHAVE_ORIGEM_DEBITO, IT_CHAVE_BILL_ID) VALUES (?,?,?,?,?,?,?,?,?,?)";
 
 
-	} catch (java.sql.SQLException ex) {
-		ex.printStackTrace();
-	}
-	String chaveLoteDebitos = geraChaveLote();
-	//System.out.println("GEROU PRIMEIRO LOTE ==> " + chaveLoteDebitos);
-	int nextSequence = getEventoNextSequence(connOracle);
-	insereNovoEvento(connOracle,nextSequence,chaveLoteDebitos);
+	PreparedStatement ps = connOracle.prepareStatement(sqlGetDebitos);
+	PreparedStatement psAda = connAdabas.prepareStatement(sqlInsertAdabas);
+	ps.setMaxRows(ROWS_LIMIT);
+	rs = ps.executeQuery();
+
+	String chaveLoteDebitos = geraChaveLote(filtroConsulta);
+
+	int nextSequence;
 
 	while(rs.next()){
-		debito = new Debito();
-		debito.setIdenDebito(rs.getString("ID_DEBITO_EXT"));
+		psAda.setString(1, "SICOB");
+		psAda.setString(2, "INTERNET");
+		psAda.setString(3, rs.getString("ID_DEBITO_EXT"));
 		switch(rs.getInt("CO_TRIBUTO_EXT")){
 			case 0:
 			case 1:
@@ -293,45 +163,49 @@ static public void loadDebitosFromOracleToAdabas(Connection connOracle, Connecti
 			case 3:
 			case 4:
 			case 7:
-				debito.setTipoDebito("L");
+				psAda.setString(4, "L");
 				break;
 			case 9:
-				debito.setIdenDebito(rs.getString("NU_DEVEDOR_RESPONSAVEL"));
-				debito.setTipoDebito("L");
+				psAda.setString(3, rs.getString("NU_DEVEDOR_RESPONSAVEL"));
+				psAda.setString(4, "L");
 				break;
 			case 5:
 			case 6:
-				debito.setTipoDebito("D");
+				psAda.setString(4, "D");
 				break;
 			case 8:
-				debito.setTipoDebito("P");
+				psAda.setString(4, "P");
 				break;
 		}
 
-		debito.setNuReceita(rs.getInt("CO_RECEITA_PRINCIPAL"));
-		debito.setAnoRefDebito(rs.getInt("DT_ANO_LANCAMENTO"));
-		debito.setChaveExtDebito(rs.getString("EXT_BILL_ID"));
-		debito.setNuCotaDebito(rs.getString("NU_PARCELA_LANCAMENTO"));
-		debito.setChaveLote(chaveLoteDebitos);
+		psAda.setInt(5, rs.getInt("CO_RECEITA_PRINCIPAL"));
+		psAda.setInt(6, rs.getInt("DT_ANO_LANCAMENTO"));
+		psAda.setString(7, chaveLoteDebitos);
+		psAda.setString(8, rs.getString("NU_PARCELA_LANCAMENTO"));
+		psAda.setString(9, rs.getString("EXT_BILL_ID"));
+		psAda.setString(10, rs.getString("BILL_ID"));
 
-		listaDebitos.add(debito);
+		psAda.addBatch();
 
 		qtdDados++;
 
-		if(qtdDados == BATCH_SIZE){
-			gravaDebitosAdabas(connAdabas, listaDebitos);
-			chaveLoteDebitos = geraChaveLote();
-			//System.out.println("GEROU NOVO LOTE ==> " + chaveLoteDebitos);
+		if (qtdDados == BATCH_SIZE) {
+			psAda.executeBatch();
+			connAdabas.commit();
+			psAda.clearBatch();
 			nextSequence = getEventoNextSequence(connOracle);
-			insereNovoEvento(connOracle,nextSequence,chaveLoteDebitos);
-			listaDebitos = new ArrayList<Debito>();
+			insereNovoEvento(connOracle, nextSequence, chaveLoteDebitos);
+			chaveLoteDebitos = geraChaveLote(filtroConsulta);
 			qtdDados = 0;
 		}
 	}
 
-	if(listaDebitos != null || !listaDebitos.isEmpty()){
-		////System.out.println("GRAVOU ULTIMO LOTE COM A CHAVE ==> " + chaveLoteDebitos);
-		gravaDebitosAdabas(connAdabas, listaDebitos);
+	if (qtdDados > 0) {
+		psAda.executeBatch();
+		connAdabas.commit();
+		psAda.clearBatch();
+		nextSequence = getEventoNextSequence(connOracle);
+		insereNovoEvento(connOracle, nextSequence, chaveLoteDebitos);
 	}
 
 }
