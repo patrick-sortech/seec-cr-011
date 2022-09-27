@@ -1,253 +1,298 @@
 import br.com.sortech.utils.configurations.database.ConnectionManager;
 
 import java.sql.*;
-import java.sql.Connection;
-import java.util.*;
-import java.text.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Properties;
-import java.util.concurrent.TimeUnit;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Calendar;
 
 
-public static int BATCH_SIZE = 50;
-public static int ROWS_LIMIT = 110;
+public static int BATCH_SIZE = 10000;
+public static int ROWS_LIMIT = 35000;
 public static int ROWS_OFFSET = 0;
 
-static public Connection getConexaoOracle() throws Exception {
-	Connection conn = null;
+String envType = "HOM";
 
-	 try {
-      Class.forName("oracle.jdbc.driver.OracleDriver").newInstance();
+String oracleUrl;
+String oracleUserid;
+String oraclePasswd;
+String adabasUrl;
+String adabasUser;
+String adabasPasswd;
+
+private void setEnvironment(String environmentType) {
+
+    switch (environmentType) {
+        case "DEV":
+            oracleUrl = "jdbc:oracle:thin:@sefsrvdsv700.fazenda.net:1521/oradsv03";
+            oracleUserid = "CB8COREADM";
+            oraclePasswd = "CB8COREADM";
+            adabasUrl = "jdbc:connx:DD=PATRICK;Gateway=aplsrvhml003;PORT=7500";
+            adabasUser = "_UsuAdmGwhomolog";
+            adabasPasswd = "#GW_homolog$1";
+            break;
+        case "HOM":
+            oracleUrl = "jdbc:oracle:thin:@sefsrvdsv701.fazenda.net:1521/orahml10";
+            oracleUserid = "CB8COREADM";
+            oraclePasswd = "CB8COREADM";
+            adabasUrl = "jdbc:connx:DD=PATRICK;Gateway=aplsrvhml003;PORT=7500";
+            adabasUser = "_UsuAdmGwhomolog";
+            adabasPasswd = "#GW_homolog$1";
+            break;
+        case "PRD":
+            oracleUrl = "jdbc:oracle:thin:@sefsrvprd700.fazenda.net:1521/oraprd16";
+            oracleUserid = "CB8COREADM";
+            oraclePasswd = "CB8COREADM";
+            adabasUrl = "jdbc:connx:DD=PATRICK;Gateway=aplsrvhml003;PORT=7500";
+            adabasUser = "_UsuAdmGwhomolog";
+            adabasPasswd = "#GW_homolog$1";
+            break;
+        default:
+            adabasUrl = "jdbc:connx:DD=PATRICK;Gateway=aplsrvhml003;PORT=7500";
+            adabasUser = "_UsuAdmGwhomolog";
+            adabasPasswd = "#GW_homolog$1";
+            oracleUrl = "jdbc:oracle:thin:@sefsrvprd700.fazenda.net:1521/oraprd16";
+            oracleUserid = "CB8COREADM";
+            oraclePasswd = "CB8COREADM";
+    }
+}
+
+static public Connection getConexaoOracle(String url, String userid, String passwd) throws Exception {
+    Connection conn = null;
+
+    try {
+        Class.forName("oracle.jdbc.driver.OracleDriver").newInstance();
     } catch (Exception e) {
-      e.printStackTrace();
+        e.printStackTrace();
     }
 
     try {
-    	String url = "jdbc:oracle:thin:@sefsrvdsv701.fazenda.net:1521/orahml10";
-		String userid = "CB8COREADM";
-		String passwd = "CB8COREADM";
-		conn = DriverManager.getConnection(url, userid, passwd);
+        conn = DriverManager.getConnection(url, userid, passwd);
 
-		return conn;
-	} catch (Exception ex) {
-		ex.printStackTrace();
-		throw ex;
-	} finally {
-		//conn = null;
-		return conn;
-	}
+        return conn;
+    } catch (Exception ex) {
+        ex.printStackTrace();
+        throw ex;
+    } finally {
+        //conn = null;
+        return conn;
+    }
 }
 
-static public Connection getConexaoAdabas() throws Exception {
-	String url = "jdbc:connx:DD=PATRICK;Gateway=aplsrvhml003;PORT=7500";
-	String user = "_UsuAdmGwhomolog";
-	String password = "#GW_homolog$1";
+static public Connection getConexaoAdabas(String url, String user, String password) throws Exception {
+    Class.forName("com.Connx.jdbc.TCJdbc.TCJdbcDriver").newInstance();
 
-	Class.forName("com.Connx.jdbc.TCJdbc.TCJdbcDriver").newInstance();
-
-	return DriverManager.getConnection(url, user, password);
+    return DriverManager.getConnection(url, user, password);
 }
 
 static public String geraChaveLote(String filtro) {
-	Date date = Calendar.getInstance().getTime();
-	DateFormat dateFormat = new SimpleDateFormat("yyyyMMddHHmmssS");
-	return filtro + dateFormat.format(date);
+    Date date = Calendar.getInstance().getTime();
+    DateFormat dateFormat = new SimpleDateFormat("yyyyMMddHHmmssS");
+    return filtro + dateFormat.format(date);
 }
 
-static public boolean insereNovoEvento(Connection conn, int idEvento, String chaveLote) throws java.sql.SQLException{
-	String sqlInsertEvento = "INSERT INTO RCT_EVT_E_EVENT_REQUEST \n" +
-			"(ID_EVENT, CO_EVENT, TX_REQUEST_DATA, \n" +
-			" DT_REQUEST, ST_REQUEST, TT_RETRIES, AD_CREATED_BY, AD_CREATED_DT) \n" +
-			"VALUES \n" +
-			"(?, '2', ?, sysdate, '1', '5', 'atualizacao', sysdate) \n" +
-			"";
-	if(idEvento == 0 || chaveLote == null){
-		return false;
-	}
-	try {
-		PreparedStatement pstm = conn.prepareStatement(sqlInsertEvento);
-		pstm.setInt(1, idEvento);
-		pstm.setString(2, chaveLote);
-		pstm.executeUpdate();
-		conn.commit();
+static public boolean insereNovoEvento(Connection conn, int idEvento, String chaveLote) throws java.sql.SQLException {
+    String sqlInsertEvento = "INSERT INTO RCT_EVT_E_EVENT_REQUEST \n" +
+            "(ID_EVENT, CO_EVENT, TX_REQUEST_DATA, \n" +
+            " DT_REQUEST, ST_REQUEST, TT_RETRIES, AD_CREATED_BY, AD_CREATED_DT) \n" +
+            "VALUES \n" +
+            "(?, '2', ?, sysdate, '1', '5', 'atualizacao', sysdate) \n" +
+            "";
+    if (idEvento == 0 || chaveLote == null) {
+        return false;
+    }
+    try {
+        PreparedStatement pstm = conn.prepareStatement(sqlInsertEvento);
+        pstm.setInt(1, idEvento);
+        pstm.setString(2, chaveLote);
+        pstm.executeUpdate();
+        conn.commit();
 
-		return true;
-	}catch(Exception e){
-		e.printStackTrace();
-		conn.rollback();
+        return true;
+    } catch (Exception e) {
+        e.printStackTrace();
+        conn.rollback();
 
-	}
-	return false;
+    }
+    return false;
 }
 
-static public int getEventoNextSequence(Connection conn) throws java.sql.SQLException{
-	String sqlGetUltimoEventoId = "SELECT SEQ_CURRENT_VALUE FROM AF_T_NUMERIC_SEQUENCE \n" +
-			"WHERE SEQ_NAME = 'SEQ_RCT_EVT_E_EVENT_REQUEST'";
+static public int getEventoNextSequence(Connection conn) throws java.sql.SQLException {
+    String sqlGetUltimoEventoId = "SELECT SEQ_CURRENT_VALUE FROM AF_T_NUMERIC_SEQUENCE \n" +
+            "WHERE SEQ_NAME = 'SEQ_RCT_EVT_E_EVENT_REQUEST'";
 
-	String sqlUpdateUltimoEventoId = "UPDATE AF_T_NUMERIC_SEQUENCE \n" +
-			"SET SEQ_CURRENT_VALUE = ? \n" +
-			"WHERE SEQ_NAME = 'SEQ_RCT_EVT_E_EVENT_REQUEST'";
-	try {
-		Statement st = conn.createStatement();
-		ResultSet rs = st.executeQuery(sqlGetUltimoEventoId);
-		rs.next();
-		int ultimoId = rs.getInt("SEQ_CURRENT_VALUE");
-		PreparedStatement pstm = conn.prepareStatement(sqlUpdateUltimoEventoId);
-		ultimoId++;
-		pstm.setInt(1,ultimoId);
-		pstm.executeUpdate();
-		conn.commit();
+    String sqlUpdateUltimoEventoId = "UPDATE AF_T_NUMERIC_SEQUENCE \n" +
+            "SET SEQ_CURRENT_VALUE = ? \n" +
+            "WHERE SEQ_NAME = 'SEQ_RCT_EVT_E_EVENT_REQUEST'";
+    try {
+        Statement st = conn.createStatement();
+        ResultSet rs = st.executeQuery(sqlGetUltimoEventoId);
+        rs.next();
+        int ultimoId = rs.getInt("SEQ_CURRENT_VALUE");
+        PreparedStatement pstm = conn.prepareStatement(sqlUpdateUltimoEventoId);
+        ultimoId++;
+        pstm.setInt(1, ultimoId);
+        pstm.executeUpdate();
+        conn.commit();
 
-		return ultimoId;
-	}catch(Exception e){
-		e.printStackTrace();
-		conn.rollback();
+        return ultimoId;
+    } catch (Exception e) {
+        e.printStackTrace();
+        conn.rollback();
 
-		return 0;
-	}
+        return 0;
+    }
 
 }
 
 static public void loadDebitosFromOracleToAdabas(Connection connOracle, Connection connAdabas, String filtroConsulta) throws java.sql.SQLException {
-	ResultSet rs = null;
+    ResultSet rs = null;
 
-	int qtdDados = 0;
+    int qtdDados = 0;
 
-	String sqlGetDebitos = "SELECT \n" +
-			"    NU_DEVEDOR_RESPONSAVEL,\n" +
-			"    ID_DEBITO_EXT,\n" +
-			"    CO_RECEITA_PRINCIPAL,\n" +
-			"    CO_TRIBUTO_EXT,\n" +
-			"    NU_COTA,\n" +
-			"    NU_GUIA_LANCAMENTO,\n" +
-			"    DT_ANO_LANCAMENTO,\n" +
-			"    NU_PARCELA_LANCAMENTO,\n" +
-			"    ST_PAGAMENTO,\n" +
-			"    ST_LANCAMENTO,\n" +
-			"    EXT_BILL_ID,\n" +
-			"    BILL_ID\n" +
-			"FROM ICS_IT_X_BILL\n" +
-			"WHERE ST_PAGAMENTO = '00'\n" +
-			"and (DT_ULT_ATU_DIVIDA is null or \n" +
-			"(DT_ULT_ATU_DIVIDA is not null and trunc(DT_ULT_ATU_DIVIDA) < trunc(sysdate,'MM'))) \n" +
-			"AND SUBSTR(NU_DEVEDOR_RESPONSAVEL,-1,1) = " + filtroConsulta +
-			"";
+    String sqlGetDebitos = "SELECT \n" +
+            "    NU_DEVEDOR_RESPONSAVEL,\n" +
+            "    ID_DEBITO_EXT,\n" +
+            "    CO_RECEITA_PRINCIPAL,\n" +
+            "    CO_TRIBUTO_EXT,\n" +
+            "    NU_COTA,\n" +
+            "    NU_GUIA_LANCAMENTO,\n" +
+            "    DT_ANO_LANCAMENTO,\n" +
+            "    NU_PARCELA_LANCAMENTO,\n" +
+            "    ST_PAGAMENTO,\n" +
+            "    ST_LANCAMENTO,\n" +
+            "    EXT_BILL_ID,\n" +
+            "    BILL_ID\n" +
+            "FROM ICS_IT_X_BILL\n" +
+            "WHERE ST_PAGAMENTO = '00'\n" +
+            "and (DT_ULT_ATU_DIVIDA is null or \n" +
+            "(DT_ULT_ATU_DIVIDA is not null and trunc(DT_ULT_ATU_DIVIDA) < trunc(sysdate,'MM'))) \n" +
+            "AND SUBSTR(NU_DEVEDOR_RESPONSAVEL,-1,1) = " + filtroConsulta +
+            "";
 
-	String sqlInsertAdabas = "INSERT INTO SITAF_DEBITOS_CORRECAO ( IT_NU_TERMINAL, IT_CO_USUARIO," +
-		"IT_IDEN_DEBITO,IT_IN_TIPO_DEBITO,IT_NU_RECEITA,IT_NU_ANO_REF_DEBITO,IT_CHAVE_PESQUISA, " +
-		"IT_NU_COTA_DEBITO, IT_CHAVE_ORIGEM_DEBITO, IT_CHAVE_BILL_ID) VALUES (?,?,?,?,?,?,?,?,?,?)";
+    String sqlInsertAdabas = "INSERT INTO SITAF_DEBITOS_CORRECAO ( IT_NU_TERMINAL, IT_CO_USUARIO," +
+            "IT_IDEN_DEBITO,IT_IN_TIPO_DEBITO,IT_NU_RECEITA,IT_NU_ANO_REF_DEBITO,IT_CHAVE_PESQUISA, " +
+            "IT_NU_COTA_DEBITO, IT_CHAVE_ORIGEM_DEBITO, IT_CHAVE_BILL_ID) VALUES (?,?,?,?,?,?,?,?,?,?)";
 
 
-	PreparedStatement ps = connOracle.prepareStatement(sqlGetDebitos);
-	PreparedStatement psAda = connAdabas.prepareStatement(sqlInsertAdabas);
-	ps.setMaxRows(ROWS_LIMIT);
-	rs = ps.executeQuery();
+    PreparedStatement ps = connOracle.prepareStatement(sqlGetDebitos);
+    PreparedStatement psAda = connAdabas.prepareStatement(sqlInsertAdabas);
+    ps.setMaxRows(ROWS_LIMIT);
+    rs = ps.executeQuery();
 
-	String chaveLoteDebitos = geraChaveLote(filtroConsulta);
+    String chaveLoteDebitos = geraChaveLote(filtroConsulta);
 
-	int nextSequence;
+    int nextSequence;
 
-	while(rs.next()){
-		psAda.setString(1, "SICOB");
-		psAda.setString(2, "INTERNET");
-		psAda.setString(3, rs.getString("ID_DEBITO_EXT"));
-		switch(rs.getInt("CO_TRIBUTO_EXT")){
-			case 0:
-			case 1:
-			case 2:
-			case 3:
-			case 4:
-			case 7:
-				psAda.setString(4, "L");
-				break;
-			case 9:
-				psAda.setString(3, rs.getString("NU_DEVEDOR_RESPONSAVEL"));
-				psAda.setString(4, "L");
-				break;
-			case 5:
-			case 6:
-				psAda.setString(4, "D");
-				break;
-			case 8:
-				psAda.setString(4, "P");
-				break;
-		}
+    while (rs.next()) {
+        psAda.setString(1, "SICOB");
+        psAda.setString(2, "INTERNET");
+        psAda.setString(3, rs.getString("ID_DEBITO_EXT"));
+        switch (rs.getInt("CO_TRIBUTO_EXT")) {
+            case 0:
+            case 1:
+            case 2:
+            case 3:
+            case 4:
+            case 7:
+                psAda.setString(4, "L");
+                break;
+            case 9:
+                psAda.setString(3, rs.getString("NU_DEVEDOR_RESPONSAVEL"));
+                psAda.setString(4, "L");
+                break;
+            case 5:
+            case 6:
+                psAda.setString(4, "D");
+                break;
+            case 8:
+                psAda.setString(4, "P");
+                break;
+        }
 
-		psAda.setInt(5, rs.getInt("CO_RECEITA_PRINCIPAL"));
-		psAda.setInt(6, rs.getInt("DT_ANO_LANCAMENTO"));
-		psAda.setString(7, chaveLoteDebitos);
-		psAda.setString(8, rs.getString("NU_PARCELA_LANCAMENTO"));
-		psAda.setString(9, rs.getString("EXT_BILL_ID"));
-		psAda.setString(10, rs.getString("BILL_ID"));
+        psAda.setInt(5, rs.getInt("CO_RECEITA_PRINCIPAL"));
+        psAda.setInt(6, rs.getInt("DT_ANO_LANCAMENTO"));
+        psAda.setString(7, chaveLoteDebitos);
+        psAda.setString(8, rs.getString("NU_PARCELA_LANCAMENTO"));
+        psAda.setString(9, rs.getString("EXT_BILL_ID"));
+        psAda.setString(10, rs.getString("BILL_ID"));
 
-		psAda.addBatch();
+        psAda.addBatch();
 
-		qtdDados++;
+        qtdDados++;
 
-		if (qtdDados == BATCH_SIZE) {
-			psAda.executeBatch();
-			connAdabas.commit();
-			psAda.clearBatch();
-			nextSequence = getEventoNextSequence(connOracle);
-			insereNovoEvento(connOracle, nextSequence, chaveLoteDebitos);
-			chaveLoteDebitos = geraChaveLote(filtroConsulta);
-			qtdDados = 0;
-		}
-	}
+        if (qtdDados == BATCH_SIZE) {
+            psAda.executeBatch();
+            connAdabas.commit();
+            psAda.clearBatch();
+            nextSequence = getEventoNextSequence(connOracle);
+            insereNovoEvento(connOracle, nextSequence, chaveLoteDebitos);
+            chaveLoteDebitos = geraChaveLote(filtroConsulta);
+            qtdDados = 0;
+        }
+    }
 
-	if (qtdDados > 0) {
-		psAda.executeBatch();
-		connAdabas.commit();
-		psAda.clearBatch();
-		nextSequence = getEventoNextSequence(connOracle);
-		insereNovoEvento(connOracle, nextSequence, chaveLoteDebitos);
-	}
+    if (qtdDados > 0) {
+        psAda.executeBatch();
+        connAdabas.commit();
+        psAda.clearBatch();
+        nextSequence = getEventoNextSequence(connOracle);
+        insereNovoEvento(connOracle, nextSequence, chaveLoteDebitos);
+    }
 
 }
 
 // INICIO DO CODIGO
+setEnvironment(envType);
+
 Connection connOracle;
 Connection connAdabas;
 
-connOracle = getConexaoOracle();
-connOracle.setAutoCommit(false);
+connOracle=
 
-connAdabas = getConexaoAdabas();
-connAdabas.setAutoCommit(false);
+getConexaoOracle(oracleUrl, oracleUserid, oraclePasswd);
+    connOracle.setAutoCommit(false);
+
+connAdabas=
+
+getConexaoAdabas(adabasUrl, adabasUser, adabasPasswd);
+    connAdabas.setAutoCommit(false);
 
 String filtro = _in.getString("FILTRO");
 
-try{
-	loadDebitosFromOracleToAdabas(connOracle, connAdabas, filtro);
+    try
 
-}catch(java.sql.SQLException e){
-	connOracle.rollback();
-	connOracle.close();
-	connOracle = null;
-	connAdabas.rollback();
-	connAdabas.close();
-	connAdabas = null;
-}catch(Exception e){
-	e.printStackTrace();
-	Thread.currentThread().interrupt();
-}finally{
-	if (connOracle != null) {
-		connOracle.commit();
-		connOracle.close();
-		connOracle = null;
-	}
-	if (connAdabas != null) {
-		connAdabas.commit();
-		connAdabas.close();
-		connAdabas = null;
-	}
+{
+    loadDebitosFromOracleToAdabas(connOracle, connAdabas, filtro);
+
+}catch(
+java.sql.SQLException e)
+
+{
+    connOracle.rollback();
+    connOracle.close();
+    connOracle = null;
+    connAdabas.rollback();
+    connAdabas.close();
+    connAdabas = null;
+}catch(
+Exception e)
+
+{
+    e.printStackTrace();
+    Thread.currentThread().interrupt();
+}finally
+
+{
+    if (connOracle != null) {
+        connOracle.commit();
+        connOracle.close();
+        connOracle = null;
+    }
+    if (connAdabas != null) {
+        connAdabas.commit();
+        connAdabas.close();
+        connAdabas = null;
+    }
 }
-
-
-
 
